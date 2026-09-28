@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>my_simple_agent</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #161a23; --panel-2: #1c2130; --border: #262c3d;
+    --text: #e6e9f0; --muted: #8b93a7; --accent: #4f7cff; --accent-2: #3b5fd9;
+    --user: #3556c9; --ok: #2ea36b; --err: #e0564f;
+    --mono: Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px;
+  }
+  #app { display: flex; height: 100vh; }
+
+  /* ---------- 侧栏 ---------- */
+  aside {
+    width: 240px; flex-shrink: 0; background: var(--panel);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  }
+  .brand { padding: 16px; font-weight: 600; font-size: 15px; border-bottom: 1px solid var(--border); }
+  .brand small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 2px; }
+  #btn-new {
+    margin: 12px; padding: 9px; border: 1px solid var(--accent); background: transparent;
+    color: var(--accent); border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  #btn-new:hover { background: rgba(79,124,255,.12); }
+  #session-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+  .session-item {
+    display: flex; align-items: center; padding: 9px 10px; border-radius: 8px;
+    cursor: pointer; color: var(--muted); margin-bottom: 2px; font-size: 13px;
+  }
+  .session-item:hover { background: var(--panel-2); }
+  .session-item.active { background: var(--panel-2); color: var(--text); }
+  .session-item .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-item .del { visibility: hidden; color: var(--muted); border: 0; background: none; cursor: pointer; font-size: 14px; }
+  .session-item:hover .del { visibility: visible; }
+  .session-item .del:hover { color: var(--err); }
+  .sidebar-foot { padding: 12px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+  .sidebar-foot a { color: var(--muted); }
+
+  /* ---------- 主区 ---------- */
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #chat { flex: 1; overflow-y: auto; padding: 24px 0; }
+  .chat-inner { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+
+  .bubble {
+    max-width: 82%; padding: 10px 14px; border-radius: 12px; margin-bottom: 14px;
+    line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+  }
+  .bubble.user { margin-left: auto; background: var(--user); border-bottom-right-radius: 4px; }
+  .bubble.assistant { background: var(--panel-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .bubble .cursor { display: inline-block; width: 7px; height: 15px; background: var(--accent);
+    vertical-align: -2px; margin-left: 2px; animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  details.reasoning { margin-bottom: 10px; color: var(--muted); font-size: 12px; }
+  details.reasoning summary { cursor: pointer; }
+  details.reasoning pre { margin-top: 6px; white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: 10px; }
+
+  .tool-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 14px; overflow: hidden; font-size: 12px;
+  }
+  .tool-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: var(--panel-2); font-family: var(--mono);
+  }
+  .tool-badge { margin-left: auto; font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+  .tool-badge.running { color: #f0b429; background: rgba(240,180,41,.12); }
+  .tool-badge.ok { color: var(--ok); background: rgba(46,163,107,.12); }
+  .tool-badge.fail { color: var(--err); background: rgba(224,86,79,.12); }
+  .tool-card pre {
+    padding: 8px 12px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word;
+    color: var(--muted); border-top: 1px dashed var(--border);
+  }
+  .tool-card pre:first-of-type { border-top: 0; }
+  .tool-result {
+    padding: 8px 12px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word;
+    color: var(--muted); border-top: 1px dashed var(--border); font-size: 12px;
+  }
+  .tool-result.result-ok { color: var(--text); }
+
+  /* todo 任务面板 */
+  .todo-board { font-family: inherit; }
+  .todo-head { color: var(--text); font-weight: 600; margin-bottom: 6px; font-size: 12.5px; }
+  .todo-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px;
+    margin-bottom: 3px; font-size: 12.5px; color: var(--muted); background: var(--panel-2);
+  }
+  .todo-row .todo-title { flex: 1; }
+  .todo-row.solving { background: rgba(79,124,255,.14); color: var(--text); border-left: 2px solid var(--accent); }
+  .todo-row.complete { color: var(--ok); }
+  .todo-row.complete .todo-title { text-decoration: line-through; opacity: .65; }
+  .todo-chip {
+    margin-left: auto; font-size: 10px; padding: 1px 8px; border-radius: 10px;
+    background: rgba(79,124,255,.22); color: var(--accent); flex-shrink: 0;
+  }
+
+  .status-line { color: var(--muted); font-size: 12px; margin: -6px 0 14px 2px; }
+  .status-line .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); margin-right: 6px; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .status-line.done { color: #3a4258; }
+  .status-line.error { color: var(--err); }
+
+  .error-banner {
+    background: rgba(224,86,79,.1); border: 1px solid var(--err); color: var(--err);
+    padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; font-size: 13px;
+  }
+
+  /* ---------- 空状态 ---------- */
+  .hero { text-align: center; padding: 90px 20px 40px; color: var(--muted); }
+  .hero h1 { font-size: 26px; color: var(--text); margin-bottom: 8px; }
+  .hero-examples { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 28px; }
+  .hero-examples button {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+    padding: 8px 14px; border-radius: 20px; cursor: pointer; font-size: 13px;
+  }
+  .hero-examples button:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ---------- 输入区 ---------- */
+  #composer {
+    border-top: 1px solid var(--border); background: var(--panel); padding: 14px 24px;
+  }
+  .composer-inner { max-width: 780px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+  #input {
+    flex: 1; resize: none; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px;
+    font-family: inherit; line-height: 1.5; max-height: 160px; outline: none;
+  }
+  #input:focus { border-color: var(--accent); }
+  #btn-send {
+    padding: 11px 22px; border: 0; border-radius: 10px; background: var(--accent);
+    color: #fff; font-size: 14px; cursor: pointer;
+  }
+  #btn-send:hover { background: var(--accent-2); }
+  #btn-send:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { max-width: 780px; margin: 6px auto 0; color: var(--muted); font-size: 11px; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #2c3347; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="brand">🤖 my_simple_agent
+      <small>FastAPI + DeepSeek · 从零实现</small></div>
+    <button id="btn-new">＋ 新建会话</button>
+    <div id="session-list"></div>
+    <div class="sidebar-foot" id="foot-info">checking…</div>
+  </aside>
+  <main>
+    <div id="chat"><div class="chat-inner" id="chat-inner"></div></div>
+    <div id="composer">
+      <div class="composer-inner">
+        <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+        <button id="btn-send">发送</button>
+      </div>
+      <div class="hint">复杂任务会被自动拆解成 todo 清单逐个推进 · 工具：calculator / search（DuckDuckGo 联网）/ weather / todo</div>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+const state = { currentId: null, streaming: false };
+const $chat = document.getElementById("chat");
+const $inner = document.getElementById("chat-inner");
+const $input = document.getElementById("input");
+const $send = document.getElementById("btn-send");
+
+/* ---------- 基础渲染 ---------- */
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function nearBottom() {
+  return $chat.scrollHeight - $chat.scrollTop - $chat.clientHeight < 120;
+}
+function scrollBottom(force) {
+  if (force || nearBottom()) $chat.scrollTop = $chat.scrollHeight;
+}
+
+function addBubble(role, text) {
+  const b = el("div", "bubble " + role, text);
+  $inner.appendChild(b);
+  scrollBottom();
+  return b;
+}
+
+function addErrorBanner(msg) {
+  const b = el("div", "error-banner", "⚠ " + msg);
+  $inner.appendChild(b);
+  scrollBottom(true);
+  return b;
+}
+
+function pretty(v) {
+  if (typeof v === "string") {
+    try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; }
+  }
+  return JSON.stringify(v, null, 2);
+}
+
+/* todo 工具的结果渲染成任务面板；解析失败则退回普通 JSON 展示 */
+function renderToolResult(c, ok, result) {
+  let data = result;
+  if (typeof data === "string") { try { data = JSON.parse(data); } catch { data = null; } }
+  if (data && Array.isArray(data.todos)) {
+    c.resBox.className = "tool-result";
+    c.resBox.textContent = "";
+    const board = el("div", "todo-board");
+    const done = data.complete ?? data.todos.filter(t => t.status === "complete").length;
+    board.appendChild(el("div", "todo-head",
+      `📋 任务清单 · ${done}/${data.total ?? data.todos.length} 完成`));
+    for (const t of data.todos) {
+      const row = el("div", "todo-row " + (t.status || "pending"));
+      row.appendChild(el("span", "todo-icon",
+        t.status === "complete" ? "✅" : t.status === "solving" ? "🔄" : "⏳"));
+      row.appendChild(el("span", "todo-title", `${t.id}. ${t.title || ""}`));
+      if (t.status === "solving") row.appendChild(el("span", "todo-chip", "进行中"));
+      board.appendChild(row);
+    }
+    const note = [];
+    if (data.note) note.push(data.note);
+    if (data.started) note.push(`开始：${data.started.id}. ${data.started.title}`);
+    if (data.completed) note.push(`完成：${data.completed.id}. ${data.completed.title}`);
+    if (note.length) board.appendChild(el("div", "todo-head", note.join("　")));
+    c.resBox.appendChild(board);
+  } else {
+    c.resBox.className = "tool-result" + (ok ? " result-ok" : "");
+    c.resBox.textContent = pretty(result);
+  }
+}
+
+/* 一次 assistant 回合：文字气泡 + 若干工具卡片 + 状态行 */
+function newAssistantTurn() {
+  const turn = {
+    reasoningEl: null, bubble: null, status: null,
+    toolCards: {},  // call_id -> {card, badge}
+  };
+
+  turn.ensureReasoning = () => {
+    if (!turn.reasoningEl) {
+      const d = document.createElement("details");
+      d.className = "reasoning";
+      d.innerHTML = "<summary>模型思考过程</summary>";
+      const pre = el("pre");
+      d.appendChild(pre);
+      turn.reasoningEl = pre;
+      $inner.appendChild(d);
+      scrollBottom();
+    }
+    return turn.reasoningEl;
+  };
+  turn.appendReasoning = (t) => { turn.ensureReasoning().textContent += t; scrollBottom(); };
+
+  turn.appendText = (t) => {
+    if (!turn.bubble) {
+      turn.bubble = el("div", "bubble assistant");
+      turn.cursor = el("span", "cursor");
+      turn.bubble.appendChild(turn.cursor);
+      $inner.appendChild(turn.bubble);
+    }
+    turn.bubble.insertBefore(document.createTextNode(t), turn.cursor);
+    scrollBottom();
+  };
+  turn.finishText = () => { if (turn.cursor) turn.cursor.remove(); turn.cursor = null; };
+
+  turn.setStatus = (text, cls) => {
+    if (!turn.status) {
+      turn.status = el("div", "status-line");
+      $inner.appendChild(turn.status);
+    }
+    turn.status.className = "status-line " + (cls || "");
+    turn.status.innerHTML = "";
+    if (!cls) { const d = el("span", "dot"); turn.status.appendChild(d); }
+    turn.status.appendChild(document.createTextNode(text));
+    scrollBottom();
+  };
+
+  turn.ensureToolCard = (ev) => {
+    let c = turn.toolCards[ev.call_id];
+    if (c) return c;
+    const card = el("div", "tool-card");
+    const head = el("div", "tool-head", "🔧 " + (ev.name || "?"));
+    const badge = el("span", "tool-badge running", "运行中…");
+    head.appendChild(badge);
+    card.appendChild(head);
+    const argsPre = el("pre", null, pretty(ev.arguments ?? {}));
+    card.appendChild(argsPre);
+    const resBox = el("div", "tool-result", "");
+    card.appendChild(resBox);
+    $inner.appendChild(card);
+    c = { card, badge, argsPre, resBox };
+    turn.toolCards[ev.call_id || Math.random().toString(36)] = c;
+    scrollBottom();
+    return c;
+  };
+
+  turn.updateToolCard = (ev) => {
+    const c = turn.ensureToolCard({ call_id: ev.call_id, name: ev.name, arguments: ev.arguments ?? null });
+    c.badge.textContent = ev.ok ? `${ev.duration_ms}ms` : "失败";
+    c.badge.className = "tool-badge " + (ev.ok ? "ok" : "fail");
+    renderToolResult(c, ev.ok, ev.result);
+    scrollBottom();
+  };
+
+  return turn;
+}
+
+/* ---------- 会话侧栏 ---------- */
+
+async function refreshSessions() {
+  const resp = await fetch("/api/sessions");
+  const data = await resp.json();
+  const list = document.getElementById("session-list");
+  list.innerHTML = "";
+  for (const s of data.sessions) {
+    const item = el("div", "session-item" + (s.id === state.currentId ? " active" : ""));
+    item.appendChild(el("span", "t", s.title));
+    const del = el("button", "del", "×");
+    del.title = "删除会话";
+    del.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`删除会话「${s.title}」？`)) return;
+      await fetch("/api/sessions/" + s.id, { method: "DELETE" });
+      if (state.currentId === s.id) resetChat();
+      refreshSessions();
+    };
+    item.appendChild(del);
+    item.onclick = () => openSession(s.id);
+    list.appendChild(item);
+  }
+}
+
+function resetChat() {
+  state.currentId = null;
+  $inner.innerHTML = "";
+  renderHero();
+}
+
+function renderHero() {
+  const hero = el("div", "hero");
+  hero.appendChild(el("h1", null, "🤖 my_simple_agent"));
+  hero.appendChild(el("p", null, "从零实现的 Agent Loop：接收输入 → LLM 决策 → 工具调用 → 结果回填 → 循环直到给出回答"));
+  const box = el("div", "hero-examples");
+  for (const q of ["帮我算一下 (123+456)*7 等于多少",
+                   "帮我调研并总结：搜索 DeepSeek 最新的 API 定价，算出 100 万输入 token 的费用",
+                   "搜一下 Python 3.13 有什么新特性",
+                   "北京今天天气怎么样？顺便记个待办：带伞"]) {
+    const b = el("button", null, q);
+    b.onclick = () => { $input.value = q; $input.focus(); };
+    box.appendChild(b);
+  }
+  hero.appendChild(box);
+  $inner.appendChild(hero);
+}
+
+async function openSession(id) {
+  if (state.streaming) return;
+  state.currentId = id;
+  const resp = await fetch("/api/sessions/" + id);
+  if (!resp.ok) { resetChat(); refreshSessions(); return; }
+  const data = await resp.json();
+  $inner.innerHTML = "";
+  if (!data.history.length) { renderHero(); refreshSessions(); return; }
+
+  // 历史里的工具结果按 tool_call_id 建索引
+  const results = {};
+  for (const m of data.history) if (m.role === "tool") results[m.tool_call_id] = m.content;
+
+  const turn = newAssistantTurn();
+  let opened = false;
+  for (const m of data.history) {
+    if (m.role === "user") {
+      addBubble("user", m.content);
+    } else if (m.role === "assistant") {
+      if (m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          let args = tc.function.arguments, result = results[tc.id], ok = true;
+          try { args = JSON.parse(args); } catch {}
+          try { const p = JSON.parse(result || "{}"); if (p.error) ok = false; } catch {}
+          const c = turn.ensureToolCard({ call_id: tc.id, name: tc.function.name, arguments: args });
+          c.badge.textContent = ok ? "完成" : "失败";
+          c.badge.className = "tool-badge " + (ok ? "ok" : "fail");
+          renderToolResult(c, ok, result);
+          opened = true;
+        }
+      }
+      if (m.content) { addBubble("assistant", m.content); opened = false; }
+    }
+  }
+  refreshSessions();
+}
+
+/* ---------- 发送 & SSE 流解析 ---------- */
+
+function setStreaming(v) {
+  state.streaming = v;
+  $send.disabled = v;
+  $input.disabled = v;
+  if (!v) { $input.disabled = false; $input.focus(); }
+}
+
+function handleEvent(ev, turn) {
+  switch (ev.type) {
+    case "session":
+      if (state.currentId !== ev.session_id) {
+        state.currentId = ev.session_id;
+        refreshSessions();
+      }
+      break;
+    case "token":
+      turn.appendText(ev.text);
+      turn.setStatus("回答生成中…");
+      break;
+    case "reasoning":
+      turn.appendReasoning(ev.text);
+      turn.setStatus("思考中…");
+      break;
+    case "round_start":
+      turn.setStatus(`第 ${ev.round} 轮思考中…`);
+      break;
+    case "compact":
+      turn.setStatus(`🧹 上下文过长，已压缩为结构化摘要（保留最近 ${ev.kept_messages} 条消息）`);
+      break;
+    case "tool_start":
+      turn.ensureToolCard(ev);
+      turn.setStatus(`🔧 正在调用 ${ev.name} …`);
+      break;
+    case "tool_end":
+      turn.updateToolCard(ev);
+      turn.setStatus(ev.ok ? `🔧 ${ev.name} 完成，继续思考…` : `🔧 ${ev.name} 失败，继续思考…`);
+      break;
+    case "final": {
+      turn.finishText();
+      const u = ev.usage || {};
+      const cache = u.prompt_cache_hit_tokens ? ` · 缓存命中 ${u.prompt_cache_hit_tokens}` : "";
+      turn.setStatus(`✓ 完成 · ${ev.rounds} 轮 · tokens: ${u.prompt_tokens ?? "-"} 输入 / ${u.completion_tokens ?? "-"} 输出${cache}`, "done");
+      refreshSessions();
+      break;
+    }
+    case "error":
+      turn.finishText();
+      turn.setStatus("出错", "error");
+      addErrorBanner(ev.message);
+      break;
+    case "end":
+      break; // 流结束信号，无需渲染
+  }
+}
+
+async function sendMessage() {
+  const text = $input.value.trim();
+  if (!text || state.streaming) return;
+  $input.value = "";
+  $input.style.height = "auto";
+  setStreaming(true);
+
+  // 清掉空状态提示
+  const hero = $inner.querySelector(".hero");
+  if (hero) hero.remove();
+
+  addBubble("user", text);
+  const turn = newAssistantTurn();
+  turn.setStatus("连接中…");
+
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: state.currentId, message: text }),
+    });
+    if (!resp.ok || !resp.body) {
+      let msg = "HTTP " + resp.status;
+      try { msg = (await resp.json()).detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const raw = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        for (const line of raw.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          try { handleEvent(JSON.parse(line.slice(5)), turn); } catch {}
+        }
+      }
+    }
+  } catch (e) {
+    turn.finishText();
+    turn.setStatus("连接失败", "error");
+    addErrorBanner("请求失败: " + e.message);
+  } finally {
+    turn.finishText();
+    setStreaming(false);
+    refreshSessions();
+  }
+}
+
+/* ---------- 初始化 ---------- */
+
+$send.onclick = sendMessage;
+$input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+$input.addEventListener("input", () => {
+  $input.style.height = "auto";
+  $input.style.height = Math.min($input.scrollHeight, 160) + "px";
+});
+document.getElementById("btn-new").onclick = () => { if (!state.streaming) resetChat(); };
+
+(async () => {
+  renderHero();
+  try {
+    const h = await (await fetch("/api/health")).json();
+    document.getElementById("foot-info").innerHTML =
+      `${h.model} · tools: ${h.tools.join(", ")}<br>${h.api_key_configured ? "✅ API Key 已配置" : "⚠️ 未配置 API Key（复制 .env.example 为 .env）"}`;
+  } catch {
+    document.getElementById("foot-info").textContent = "服务不可用";
+  }
+})();
+</script>
+</body>
+</html>

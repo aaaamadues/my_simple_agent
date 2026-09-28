@@ -1,0 +1,14 @@
+# 敏密配置（真实 Key 只放 .env）
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# 运行期生成的数据（记忆 / 工具结果存档 / 日志）
+data/
+logs/
+
+# Claude Code / 本地 IDE 配置
+.claude/
+.mcp.json
